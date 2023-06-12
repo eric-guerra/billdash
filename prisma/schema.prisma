@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id            String         @id // Stripe customer id
+  name          String
+  email         String
+  createdAt     DateTime       @default(now())
+  subscriptions Subscription[]
+  invoices      Invoice[]
+}
+
+model Subscription {
+  id                String   @id // Stripe subscription id
+  customerId        String
+  customer          Customer @relation(fields: [customerId], references: [id])
+  status            String
+  priceId           String
+  unitAmount        Int
+  quantity          Int
+  interval          String
+  currentPeriodEnd  DateTime
+  cancelAtPeriodEnd Boolean
+  updatedAt         DateTime // Stripe event time, not row time: guards against out-of-order webhooks
+
+  @@index([customerId])
+  @@index([status])
+}
+
+model Invoice {
+  id             String    @id
+  customerId     String
+  customer       Customer  @relation(fields: [customerId], references: [id])
+  subscriptionId String?
+  amountPaid     Int
+  amountDue      Int
+  status         String
+  paidAt         DateTime?
+
+  @@index([customerId, paidAt])
+}
+
+/// Processed Stripe event ids: makes webhook handling idempotent.
+model WebhookEvent {
+  id         String   @id
+  type       String
+  receivedAt DateTime @default(now())
+}
+
+/// Month-end MRR per customer, written by a nightly job; powers the MRR bridge.
+model MrrSnapshot {
+  month      String // YYYY-MM
+  customerId String
+  mrrCents   Int
+
+  @@id([month, customerId])
+}
